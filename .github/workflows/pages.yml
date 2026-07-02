@@ -4,20 +4,16 @@ on:
   push:
     branches:
       - main
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare Pages artifact
+      - name: Prepare output directory
         run: |
+          rm -rf output || true
           mkdir output
           shopt -s dotglob
           for f in *; do
@@ -26,12 +22,9 @@ jobs:
             fi
           done
 
-      - uses: actions/configure-pages@v4
+      - name: Deploy to gh-pages branch
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          enablement: true
-
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: output
-
-      - uses: actions/deploy-pages@v1
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./output
+          publish_branch: gh-pages
