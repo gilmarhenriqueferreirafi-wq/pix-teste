@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teste Gerador Pix no Navegador</title>
+  <style>
+    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f7; color: #222; }
+    .container { max-width: 720px; margin: auto; background: white; padding: 24px; border-radius: 16px; box-shadow: 0 14px 28px rgba(0,0,0,0.08); }
+    input, button { width: 100%; padding: 14px; margin-top: 8px; font-size: 16px; border-radius: 10px; border: 1px solid #ccc; }
+    button { background: #007bff; color: white; border: none; cursor: pointer; }
+    button:hover { background: #0056d8; }
+    #qr img { max-width: 100%; border-radius: 16px; margin-top: 18px; }
+    #payload { margin-top: 18px; white-space: pre-wrap; background: #f4f4f9; padding: 14px; border-radius: 10px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Gerador de QR Code Pix</h1>
+
+    <label for="amount">Valor</label>
+    <input id="amount" type="text" placeholder="Digite o valor em reais" />
+
+    <label for="pixKey">Chave Pix</label>
+    <input id="pixKey" type="text" placeholder="CPF/CNPJ, email, telefone ou chave aleatória" value="" />
+    <small style="display:block; margin-top:8px; color:#666;">Nome, cidade e TXID são fixos no código.</small>
+
+    <button onclick="generatePix()">Gerar QR Code</button>
+
+    <div id="message" style="margin-top:14px; color:#b00;"></div>
+    <div id="payload"></div>
+    <div id="qr"></div>
+  </div>
+
+  <script>
+    function makeField(id, value) {
+      const len = value.length;
+      const lenText = len < 10 ? '0' + len : String(len);
+      return id + lenText + value;
+    }
+
+    function calcCrc16(data) {
+      let crc = 0xFFFF;
+      for (let i = 0; i < data.length; i++) {
+        crc ^= data.charCodeAt(i) << 8;
+        for (let bit = 0; bit < 8; bit++) {
+          if (crc & 0x8000) {
+            crc = (crc << 1) ^ 0x1021;
+          } else {
+            crc <<= 1;
+          }
+          crc &= 0xFFFF;
+        }
+      }
+      return crc;
+    }
+
+    function normalizeAmount(amount) {
+      amount = amount.trim().replace(',', '.');
+      if (amount.startsWith('.')) amount = '0' + amount;
+      if (amount === '') return '';
+      let clean = '';
+      let dotSeen = false;
+      for (let char of amount) {
+        if (char >= '0' && char <= '9') {
+          clean += char;
+        } else if (char === '.' && !dotSeen) {
+          dotSeen = true;
+          clean += char;
+        }
+      }
+      const dotPos = clean.indexOf('.');
+      if (dotPos < 0) {
+        clean += '.00';
+      } else {
+        const decimals = clean.length - dotPos - 1;
+        if (decimals === 0) clean += '00';
+        else if (decimals === 1) clean += '0';
+        else if (decimals > 2) clean = clean.substring(0, dotPos + 3);
+      }
+      if (clean === '.00' || clean === '') return '';
+      return clean;
+    }
+
+    function sanitizeText(text) {
+      text = text.trim().toUpperCase();
+      const accents = {
+        'Á':'A','À':'A','Â':'A','Ã':'A','Ä':'A','Å':'A',
+        'É':'E','È':'E','Ê':'E','Ë':'E',
+        'Í':'I','Ì':'I','Î':'I','Ï':'I',
+        'Ó':'O','Ò':'O','Ô':'O','Õ':'O','Ö':'O',
+        'Ú':'U','Ù':'U','Û':'U','Ü':'U',
+        'Ç':'C','Ñ':'N'
+      };
+      let result = '';
+      for (let char of text) {
+        if (accents[char]) char = accents[char];
+        if (/^[A-Z0-9 \-\.\&\/\:]+$/.test(char)) {
+          result += char;
+        }
+      }
+      return result;
+    }
+
+    function normalizePixKey(key) {
+      key = key.trim();
+      if (!key) return '';
+
+      const onlyDigits = key.replace(/\D/g, '');
+      if (onlyDigits.length === 11 || onlyDigits.length === 14) {
+        return onlyDigits; // CPF ou CNPJ
+      }
+
+      // Telefone Pix pode começar com +55 ou 55 e conter parênteses/hífens/espaços
+      if (/^\+?[0-9\s\-()]+$/.test(key)) {
+        let cleaned = key.replace(/[\s\-()]/g, '');
+        return cleaned;
+      }
+
+      // Email Pix
+      const email = key.replace(/\s+/g, '');
+      if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return email.toLowerCase();
+      }
+
+      // Chave aleatória Pix: aceita letras, números, underscore, hífen e pontos
+      if (/^[A-Za-z0-9_.-]+$/.test(key)) {
+        return key;
+      }
+
+      return '';
+    }
+
+    function createPixPayload(pixKey, receiverName, receiverCity, txid, amount) {
+      receiverName = sanitizeText(receiverName);
+      receiverCity = sanitizeText(receiverCity);
+      const merchantAccountInfo = makeField('00', 'BR.GOV.BCB.PIX') + makeField('01', pixKey);
+      let payload = '';
+      payload += makeField('00', '01');
+      payload += makeField('26', merchantAccountInfo);
+      payload += makeField('52', '0000');
+      payload += makeField('53', '986');
+      if (amount.length > 0) {
+        payload += makeField('54', amount);
+      }
+      payload += makeField('58', 'BR');
+      payload += makeField('59', receiverName);
+      payload += makeField('60', receiverCity);
+      payload += makeField('62', makeField('05', txid));
+      payload += '6304';
+      const crc = calcCrc16(payload);
+      const crcText = crc.toString(16).toUpperCase().padStart(4, '0');
+      payload += crcText;
+      return payload;
+    }
+    function generatePix() {
+      const rawPixKey = document.getElementById('pixKey').value;
+      const pixKey = normalizePixKey(rawPixKey);
+      const amount = normalizeAmount(document.getElementById('amount').value);
+      const message = document.getElementById('message');
+      message.textContent = '';
+
+      const receiverName = 'KARINE';
+      const receiverCity = 'ITATIAÇU';
+      const txid = 'ITATIACU123';
+
+      if (!pixKey) {
+        message.textContent = 'Use uma chave Pix real (CPF/CNPJ, telefone, email ou chave aleatória).';
+        return;
+      }
+      if (!amount) {
+        message.textContent = 'Digite um valor válido para o Pix.';
+        return;
+      }
+
+      const payload = createPixPayload(pixKey, receiverName, receiverCity, txid, amount);
+      document.getElementById('payload').textContent = 'Payload Pix: ' + payload;
+      const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=' + encodeURIComponent(payload);
+      document.getElementById('qr').innerHTML = '<img src="' + qrUrl + '" alt="QR Code Pix" />';
+    }
+  </script>
+</body>
+</html>
