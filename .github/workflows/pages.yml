@@ -21,7 +21,7 @@ jobs:
           mkdir output
           shopt -s dotglob
           for f in *; do
-            if [ "$f" != ".github" ] && [ "$f" != ".git" ]; then
+            if [ "$f" != ".github" ] && [ "$f" != ".git" ] && [ "$f" != "output" ]; then
               cp -R "$f" output/
             fi
           done
