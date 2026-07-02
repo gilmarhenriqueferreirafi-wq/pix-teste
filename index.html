@@ -27,8 +27,8 @@
       <h3 id="historyTitle">Últimos Pix (neste dispositivo)</h3>
       <div id="historyPanelContent"></div>
       <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end;">
-        <button id="clearHistory" style="background:#eee;border:1px solid #ccc;padding:8px 10px;border-radius:8px;cursor:pointer;margin-right:auto;">Limpar histórico</button>
-        <button id="closeHistory" style="background:#eee;border:1px solid #ccc;padding:8px 10px;border-radius:8px;cursor:pointer;">Fechar</button>
+        <button id="clearHistory" style="margin-right:auto;">Limpar histórico</button>
+        <button id="closeHistory">Fechar</button>
       </div>
     </div>
   </div>
@@ -287,11 +287,8 @@
       ul.style.gap = '8px';
       list.forEach(item => {
         const el = document.createElement('div');
-        el.style.padding = '8px';
-        el.style.border = '1px solid #eee';
-        el.style.borderRadius = '8px';
-        el.style.background = '#fafafa';
-        el.innerHTML = `<div style="font-size:14px; color:#111;"><strong>R$ ${item.amount}</strong> — <span style="color:#666; font-size:12px;">${formatDate(item.t)}</span></div><div style="font-size:12px; color:#444; word-break:break-all;">TXID: ${item.txid}</div>`;
+        el.className = 'history-item';
+        el.innerHTML = `<div style="font-size:14px; color:inherit;"><strong>R$ ${item.amount}</strong> — <span style="font-size:12px; opacity:0.85;">${formatDate(item.t)}</span></div><div style="font-size:12px; word-break:break-all; opacity:0.9;">TXID: ${item.txid}</div>`;
         ul.appendChild(el);
       });
       container.appendChild(ul);
@@ -311,11 +308,8 @@
       if (clearBtn) clearBtn.style.display = 'inline-block';
       const item = list[0];
       const el = document.createElement('div');
-      el.style.padding = '8px';
-      el.style.border = '1px solid #eee';
-      el.style.borderRadius = '8px';
-      el.style.background = '#fafafa';
-      el.innerHTML = `<div style="font-size:14px; color:#111;"><strong>R$ ${item.amount}</strong> — <span style="color:#666; font-size:12px;">${formatDate(item.t)}</span></div><div style="font-size:12px; color:#444; word-break:break-all;">TXID: ${item.txid}</div>`;
+      el.className = 'history-item';
+      el.innerHTML = `<div style="font-size:14px; color:inherit;"><strong>R$ ${item.amount}</strong> — <span style="font-size:12px; opacity:0.85;">${formatDate(item.t)}</span></div><div style="font-size:12px; word-break:break-all; opacity:0.9;">TXID: ${item.txid}</div>`;
       container.appendChild(el);
     }
 
