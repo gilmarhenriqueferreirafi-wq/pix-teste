@@ -4,18 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Teste Gerador Pix no Navegador</title>
-  <style>
-    body { font-family: Arial, sans-serif; padding: 20px; background: #f5f5f7; color: #222; }
-    .container { max-width: 720px; margin: auto; background: white; padding: 24px; border-radius: 16px; box-shadow: 0 14px 28px rgba(0,0,0,0.08); }
-    input, button { width: 100%; padding: 14px; margin-top: 8px; font-size: 16px; border-radius: 10px; border: 1px solid #ccc; }
-    button { background: #007bff; color: white; border: none; cursor: pointer; }
-    button:hover { background: #0056d8; }
-    #qr { display: flex; justify-content: center; margin-top: 18px; }
-    #qr img { max-width: 100%; border-radius: 16px; }
-    #timer { margin-top: 16px; height: 8px; background: #e0e0e0; border-radius: 999px; overflow: hidden; display: none; }
-    #timerBar { height: 100%; width: 100%; background: #007bff; transition: width 0.1s linear; }
-    #payload { margin-top: 18px; white-space: pre-wrap; background: #f4f4f9; padding: 14px; border-radius: 10px; }
-  </style>
+  <link rel="stylesheet" href="stelles.css">
 </head>
 <body>
   <div class="container">
@@ -29,6 +18,19 @@
     <div id="message" style="margin-top:14px; color:#b00;"></div>
     <div id="timer"><div id="timerBar"></div></div>
     <div id="qr"></div>
+    <pre id="payload" style="margin-top:12px; background:#f4f4f9; padding:10px; border-radius:8px; overflow:auto; display:none; white-space:pre-wrap;"></pre>
+    <h2 style="margin-top:18px; font-size:16px;">Últimos Pix (neste dispositivo)</h2>
+    <div id="history" style="margin-top:8px; color:#333;"></div>
+    <button id="clearHistory" style="margin-top:8px; display:none; background:#eee; border:1px solid #ccc; padding:8px; border-radius:8px; cursor:pointer;">Limpar histórico</button>
+
+    <button id="historyToggle" title="Histórico">⋯</button>
+    <div id="historyPanel" role="dialog" aria-labelledby="historyTitle">
+      <h3 id="historyTitle">Últimos Pix (neste dispositivo)</h3>
+      <div id="historyPanelContent"></div>
+      <div style="display:flex; gap:8px; margin-top:10px; justify-content:flex-end;">
+        <button id="closeHistory" style="background:#eee;border:1px solid #ccc;padding:8px 10px;border-radius:8px;cursor:pointer;">Fechar</button>
+      </div>
+    </div>
   </div>
 
   <script>
@@ -125,7 +127,7 @@
         return email.toLowerCase();
       }
 
-      // Chave aleatória Pix: aceita letras, números, underscore, hífen e pontos
+      // Chave aleatória Pix: aceita UUID com hífens, letras, números, underscore e pontos
       if (/^[A-Za-z0-9_.-]+$/.test(key)) {
         return key;
       }
@@ -134,6 +136,8 @@
     }
 
     function createPixPayload(pixKey, receiverName, receiverCity, txid, amount) {
+      // garantir txid compatível (remover caracteres inválidos e limitar tamanho)
+      txid = sanitizeTxid(txid);
       receiverName = sanitizeText(receiverName);
       receiverCity = sanitizeText(receiverCity);
       const merchantAccountInfo = makeField('00', 'BR.GOV.BCB.PIX') + makeField('01', pixKey);
@@ -155,7 +159,14 @@
       payload += crcText;
       return payload;
     }
+    function sanitizeTxid(t) {
+      if (!t) return '';
+      // remover espaços e hífens e manter apenas alfanuméricos
+      const cleaned = String(t).replace(/[^A-Za-z0-9]/g, '');
+      return cleaned.slice(0, 25);
+    }
     function generatePix() {
+      // usar chave aleatória (fixa) informada
       const fixedPixKey = '94bf38c0-a4df-4c34-9b82-9c7cd172a448';
       const pixKey = normalizePixKey(fixedPixKey);
       const amount = normalizeAmount(document.getElementById('amount').value);
@@ -164,7 +175,13 @@
 
       const receiverName = 'Milena';
       const receiverCity = 'ITATIAÇU';
-      const txid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000000));
+      // gerar txid curto (máx 25 chars) — alguns apps rejeitam txid muito longo (UUID 36 chars)
+      let txid = '';
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        txid = crypto.randomUUID().replace(/-/g, '').slice(0, 25);
+      } else {
+        txid = ('tx' + Date.now().toString(36) + Math.random().toString(36).slice(2, 10)).slice(0, 25);
+      }
 
       if (!pixKey) {
         message.textContent = 'A chave Pix fixa no código é inválida.';
@@ -176,8 +193,15 @@
       }
 
       const payload = createPixPayload(pixKey, receiverName, receiverCity, txid, amount);
+      // salvar no histórico local antes de exibir
+      saveToHistory({ txid: txid, amount: amount, t: new Date().toISOString(), payload: payload });
       const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=' + encodeURIComponent(payload);
       document.getElementById('qr').innerHTML = '<img src="' + qrUrl + '" alt="QR Code Pix" />';
+      const payloadEl = document.getElementById('payload');
+      if (payloadEl) {
+        payloadEl.style.display = 'block';
+        payloadEl.textContent = payload;
+      }
 
       const timer = document.getElementById('timer');
       const timerBar = document.getElementById('timerBar');
@@ -200,11 +224,125 @@
         timer.style.display = 'none';
         timerBar.style.width = '100%';
         message.textContent = 'QR code expirou. Gere um novo se precisar pagar.';
+        const payloadEl = document.getElementById('payload');
+        if (payloadEl) {
+          payloadEl.style.display = 'none';
+          payloadEl.textContent = '';
+        }
         clearInterval(qrIntervalId);
         qrIntervalId = null;
         qrTimeoutId = null;
       }, duration);
     }
+
+    // Local history: salva txid, amount e timestamp no localStorage
+    function saveToHistory(entry) {
+      try {
+        const key = 'pix_history';
+        const raw = localStorage.getItem(key);
+        const list = raw ? JSON.parse(raw) : [];
+        list.unshift(entry);
+        // manter últimos 20
+        const trimmed = list.slice(0, 20);
+        localStorage.setItem(key, JSON.stringify(trimmed));
+        renderLastHistory();
+      } catch (e) {
+        console.error('Erro salvando histórico:', e);
+      }
+    }
+
+    function loadHistory() {
+      try {
+        const raw = localStorage.getItem('pix_history');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+
+    function formatDate(iso) {
+      try {
+        const d = new Date(iso);
+        return d.toLocaleString();
+      } catch (e) {
+        return iso;
+      }
+    }
+
+    function renderHistory(containerId = 'history') {
+      const list = loadHistory();
+      const container = document.getElementById(containerId);
+      const clearBtn = document.getElementById('clearHistory');
+      if (!container) return;
+      container.innerHTML = '';
+      if (!list || list.length === 0) {
+        container.textContent = 'Nenhum pagamento gerado neste dispositivo ainda.';
+        if (clearBtn) clearBtn.style.display = 'none';
+        return;
+      }
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+      const ul = document.createElement('div');
+      ul.style.display = 'flex';
+      ul.style.flexDirection = 'column';
+      ul.style.gap = '8px';
+      list.forEach(item => {
+        const el = document.createElement('div');
+        el.style.padding = '8px';
+        el.style.border = '1px solid #eee';
+        el.style.borderRadius = '8px';
+        el.style.background = '#fafafa';
+        el.innerHTML = `<div style="font-size:14px; color:#111;"><strong>R$ ${item.amount}</strong> — <span style="color:#666; font-size:12px;">${formatDate(item.t)}</span></div><div style="font-size:12px; color:#444; word-break:break-all;">TXID: ${item.txid}</div>`;
+        ul.appendChild(el);
+      });
+      container.appendChild(ul);
+    }
+
+    // render somente o último item na área principal
+    function renderLastHistory() {
+      const list = loadHistory();
+      const container = document.getElementById('history');
+      const clearBtn = document.getElementById('clearHistory');
+      container.innerHTML = '';
+      if (!list || list.length === 0) {
+        container.textContent = 'Nenhum pagamento gerado neste dispositivo ainda.';
+        if (clearBtn) clearBtn.style.display = 'none';
+        return;
+      }
+      if (clearBtn) clearBtn.style.display = 'inline-block';
+      const item = list[0];
+      const el = document.createElement('div');
+      el.style.padding = '8px';
+      el.style.border = '1px solid #eee';
+      el.style.borderRadius = '8px';
+      el.style.background = '#fafafa';
+      el.innerHTML = `<div style="font-size:14px; color:#111;"><strong>R$ ${item.amount}</strong> — <span style="color:#666; font-size:12px;">${formatDate(item.t)}</span></div><div style="font-size:12px; color:#444; word-break:break-all;">TXID: ${item.txid}</div>`;
+      container.appendChild(el);
+    }
+
+    document.getElementById('clearHistory').addEventListener('click', () => {
+      localStorage.removeItem('pix_history');
+      renderLastHistory();
+    });
+
+    // export removed
+
+    // toggles do painel flutuante
+    document.getElementById('historyToggle').addEventListener('click', () => {
+      const panel = document.getElementById('historyPanel');
+      const visible = panel.style.display === 'block';
+      if (!visible) {
+        renderHistory('historyPanelContent');
+        panel.style.display = 'block';
+      } else {
+        panel.style.display = 'none';
+      }
+    });
+    document.getElementById('closeHistory').addEventListener('click', () => {
+      document.getElementById('historyPanel').style.display = 'none';
+    });
+
+    // render inicial (mostrar somente o último na página)
+    document.addEventListener('DOMContentLoaded', () => renderLastHistory());
   </script>
 </body>
 </html>
