@@ -10,7 +10,10 @@
     input, button { width: 100%; padding: 14px; margin-top: 8px; font-size: 16px; border-radius: 10px; border: 1px solid #ccc; }
     button { background: #007bff; color: white; border: none; cursor: pointer; }
     button:hover { background: #0056d8; }
-    #qr img { max-width: 100%; border-radius: 16px; margin-top: 18px; }
+    #qr { display: flex; justify-content: center; margin-top: 18px; }
+    #qr img { max-width: 100%; border-radius: 16px; }
+    #timer { margin-top: 16px; height: 8px; background: #e0e0e0; border-radius: 999px; overflow: hidden; display: none; }
+    #timerBar { height: 100%; width: 100%; background: #007bff; transition: width 0.1s linear; }
     #payload { margin-top: 18px; white-space: pre-wrap; background: #f4f4f9; padding: 14px; border-radius: 10px; }
   </style>
 </head>
@@ -21,18 +24,17 @@
     <label for="amount">Valor</label>
     <input id="amount" type="text" placeholder="Digite o valor em reais" />
 
-    <label for="pixKey">Chave Pix</label>
-    <input id="pixKey" type="text" placeholder="CPF/CNPJ, email, telefone ou chave aleatória" value="" />
-    <small style="display:block; margin-top:8px; color:#666;">Nome, cidade e TXID são fixos no código.</small>
-
     <button onclick="generatePix()">Gerar QR Code</button>
 
     <div id="message" style="margin-top:14px; color:#b00;"></div>
-    <div id="payload"></div>
+    <div id="timer"><div id="timerBar"></div></div>
     <div id="qr"></div>
   </div>
 
   <script>
+    let qrTimeoutId = null;
+    let qrIntervalId = null;
+
     function makeField(id, value) {
       const len = value.length;
       const lenText = len < 10 ? '0' + len : String(len);
@@ -154,18 +156,18 @@
       return payload;
     }
     function generatePix() {
-      const rawPixKey = document.getElementById('pixKey').value;
-      const pixKey = normalizePixKey(rawPixKey);
+      const fixedPixKey = '94bf38c0-a4df-4c34-9b82-9c7cd172a448';
+      const pixKey = normalizePixKey(fixedPixKey);
       const amount = normalizeAmount(document.getElementById('amount').value);
       const message = document.getElementById('message');
       message.textContent = '';
 
-      const receiverName = 'KARINE';
+      const receiverName = 'Milena';
       const receiverCity = 'ITATIAÇU';
-      const txid = 'ITATIACU123';
+      const txid = (typeof crypto !== 'undefined' && crypto.randomUUID) ? crypto.randomUUID() : ('tx-' + Date.now() + '-' + Math.floor(Math.random() * 1000000));
 
       if (!pixKey) {
-        message.textContent = 'Use uma chave Pix real (CPF/CNPJ, telefone, email ou chave aleatória).';
+        message.textContent = 'A chave Pix fixa no código é inválida.';
         return;
       }
       if (!amount) {
@@ -174,9 +176,34 @@
       }
 
       const payload = createPixPayload(pixKey, receiverName, receiverCity, txid, amount);
-      document.getElementById('payload').textContent = 'Payload Pix: ' + payload;
       const qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=320x320&data=' + encodeURIComponent(payload);
       document.getElementById('qr').innerHTML = '<img src="' + qrUrl + '" alt="QR Code Pix" />';
+
+      const timer = document.getElementById('timer');
+      const timerBar = document.getElementById('timerBar');
+      timer.style.display = 'block';
+      timerBar.style.width = '100%';
+
+      if (qrTimeoutId) clearTimeout(qrTimeoutId);
+      if (qrIntervalId) clearInterval(qrIntervalId);
+
+      const duration = 60000;
+      const start = Date.now();
+      qrIntervalId = setInterval(() => {
+        const elapsed = Date.now() - start;
+        const progress = Math.max(0, 100 - (elapsed / duration) * 100);
+        timerBar.style.width = progress + '%';
+      }, 100);
+
+      qrTimeoutId = setTimeout(() => {
+        document.getElementById('qr').innerHTML = '';
+        timer.style.display = 'none';
+        timerBar.style.width = '100%';
+        message.textContent = 'QR code expirou. Gere um novo se precisar pagar.';
+        clearInterval(qrIntervalId);
+        qrIntervalId = null;
+        qrTimeoutId = null;
+      }, duration);
     }
   </script>
 </body>
