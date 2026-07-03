@@ -51,7 +51,7 @@ function createPixPayload(pixKey, receiverName, receiverCity, txid, amount) {
   return payload;
 }
 
-const fixedPixKey = '94bf38c0-a4df-4c34-9b82-9c7cd172a448';
+const fixedPixKey = '19566990669';
 let pixKey = fixedPixKey;
 const amount = '10.00';
 const receiverName = 'Milena';
